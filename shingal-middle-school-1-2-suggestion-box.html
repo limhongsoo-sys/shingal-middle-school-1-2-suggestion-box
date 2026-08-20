@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>신갈중학교 1학년 2반 건의함</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2pdf.js for exporting suggestions -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: #f8fafc;
+        }
+        .fade-in {
+            animation: fadeIn 0.25s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col justify-between selection:bg-blue-500 selection:text-white">
+
+    <!-- Main App Container -->
+    <div id="app" class="flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full"></div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Reset Confirmation Modal -->
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center fade-in">
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 text-xl">⚠️</div>
+            <h3 class="text-lg font-bold text-slate-900 mb-2">모든 건의사항 초기화</h3>
+            <p class="text-xs text-slate-500 mb-6 leading-relaxed">등록된 모든 건의사항이 삭제됩니다.<br>이 작업은 복구할 수 없습니다. 계속하시겠습니까?</p>
+            <div class="flex gap-2">
+                <button onclick="closeModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">취소</button>
+                <button id="modal-confirm-btn" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition">초기화 진행</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const INITIAL_STUDENTS = [
+            '강지민', '김명민', '김태연', '김주영', '김한별', 
+            '마은혜', '박근령', '박주연', '박준서', '박준수', 
+            '성지원', '선우제레미', '송민지', '신민호', '신준호', 
+            '심현보', '윤여은', '이상은', '이지수', '임재현', 
+            '임지은', '전예주', '정지섭', '주현성', '최은서', 
+            '하유진', '한결', '한소율', '허은성', '노은하'
+        ];
+
+        const INITIAL_TEACHERS = ['차승환', '담임선생님'];
+
+        function initStorage() {
+            let users = JSON.parse(localStorage.getItem('singal_users')) || {};
+            
+            INITIAL_STUDENTS.forEach(name => {
+                if (!users[name]) {
+                    users[name] = { password: '1234', role: 'student' };
+                }
+            });
+            INITIAL_TEACHERS.forEach(name => {
+                if (!users[name]) {
+                    users[name] = { password: '1234', role: 'teacher' };
+                }
+            });
+            localStorage.setItem('singal_users', JSON.stringify(users));
+
+            if (!localStorage.getItem('singal_suggestions')) {
+                localStorage.setItem('singal_suggestions', JSON.stringify([]));
+            }
+        }
+
+        initStorage();
+
+        let state = {
+            view: 'home',
+            user: JSON.parse(sessionStorage.getItem('singal_session')) || null,
+            tab: 'list', // 'list', 'student_manage', 'setting'
+            filterRange: 'all', // 'all', 'month'
+            teacherForceAnonymous: false,
+            loginError: ''
+        };
+
+        function getUsers() {
+            return JSON.parse(localStorage.getItem('singal_users')) || {};
+        }
+
+        function saveUsers(users) {
+            localStorage.setItem('singal_users', JSON.stringify(users));
+        }
+
+        function getSuggestions() {
+            return JSON.parse(localStorage.getItem('singal_suggestions')) || [];
+        }
+
+        function saveSuggestions(suggestions) {
+            localStorage.setItem('singal_suggestions', JSON.stringify(suggestions));
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;")
+                      .replace(/"/g, "&quot;")
+                      .replace(/'/g, "&#039;");
+        }
+
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'bg-slate-900 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-lg fade-in flex items-center gap-2 border border-slate-700/50 pointer-events-auto';
+            toast.innerHTML = `<span>💬</span> <span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
+        }
+
+        function navigate(viewName) {
+            state.view = viewName;
+            state.loginError = '';
+            render();
+        }
+
+        function handleLogin(role, event) {
+            event.preventDefault();
+            const nameInput = document.getElementById('login-name').value.trim();
+            const passInput = document.getElementById('login-password').value.trim();
+            const users = getUsers();
+
+            const userInfo = users[nameInput];
+
+            if (userInfo && userInfo.password === passInput && userInfo.role === role) {
+                state.user = { name: nameInput, role: role };
+                sessionStorage.setItem('singal_session', JSON.stringify(state.user));
+                state.view = 'dashboard';
+                state.tab = 'list';
+                state.loginError = '';
+                showToast(`${nameInput}님 환영합니다!`);
+                render();
+            } else {
+                state.loginError = '이름 또는 비밀번호가 올바르지 않습니다.';
+                render();
+            }
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem('singal_session');
+            state.user = null;
+            state.view = 'home';
+            showToast('로그아웃 되었습니다.');
+            render();
+        }
+
+        function handleResetStudentPw(studentName) {
+            const users = getUsers();
+            if (users[studentName]) {
+                users[studentName].password = '1234';
+                saveUsers(users);
+                showToast(`${studentName} 학생의 비밀번호가 1234로 초기화되었습니다.`);
+                render();
+            }
+        }
+
+        function handleChangePassword(event) {
+            event.preventDefault();
+            const newPw = document.getElementById('new-pw').value.trim();
+            const confirmPw = document.getElementById('confirm-pw').value.trim();
+
+            if (newPw !== confirmPw) {
+                showToast('새 비밀번호가 서로 일치하지 않습니다.');
+                return;
+            }
+
+            if (newPw.length < 4) {
+                showToast('비밀번호는 최소 4자리 이상이어야 합니다.');
+                return;
+            }
+
+            const users = getUsers();
+            if (users[state.user.name]) {
+                users[state.user.name].password = newPw;
+                saveUsers(users);
+                showToast('비밀번호가 성공적으로 변경되었습니다.');
+                state.tab = 'list';
+                render();
+            }
+        }
+
+        function handleAddSuggestion(event) {
+            event.preventDefault();
+            const titleInput = document.getElementById('sug-title').value.trim();
+            const contentInput = document.getElementById('sug-content').value.trim();
+
+            if (!titleInput || !contentInput) return;
+
+            const suggestions = getSuggestions();
+            const newSug = {
+                id: Date.now(),
+                author: state.user.name,
+                title: titleInput,
+                content: contentInput,
+                date: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+                timestamp: new Date().toISOString()
+            };
+
+            suggestions.unshift(newSug);
+            saveSuggestions(suggestions);
+            showToast('건의사항이 등록되었습니다.');
+            render();
+        }
+
+        function openResetModal() {
+            const overlay = document.getElementById('modal-overlay');
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            overlay.classList.remove('hidden');
+            
+            confirmBtn.onclick = function() {
+                saveSuggestions([]);
+                closeModal();
+                showToast('모든 건의사항이 초기화되었습니다.');
+                render();
+            };
+        }
+
+        function closeModal() {
+            const overlay = document.getElementById('modal-overlay');
+            overlay.classList.add('hidden');
+        }
+
+        function downloadPDF() {
+            const suggestions = getSuggestions();
+            if (suggestions.length === 0) {
+                showToast('다운로드할 건의사항이 없습니다.');
+                return;
+            }
+
+            const element = document.createElement('div');
+            element.style.padding = '20px';
+            element.style.fontFamily = 'Pretendard, sans-serif';
+
+            let isTeacher = state.user && state.user.role === 'teacher';
+            let showAuthor = isTeacher && !state.teacherForceAnonymous;
+
+            element.innerHTML = `
+                <div style="border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 20px;">
+                    <h1 style="font-size: 20px; font-weight: bold; color: #1e293b; margin: 0;">🏫 신갈중학교 1학년 2반 건의함 리포트</h1>
+                    <p style="font-size: 12px; color: #64748b; margin-top: 4px;">출력 일시: ${new Date().toLocaleString('ko-KR')}</p>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                    ${suggestions.map((s, index) => `
+                        <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; background-color: #ffffff;">
+                            <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin-bottom: 6px; color: #0f172a;">
+                                <span>#${index + 1}. ${escapeHtml(s.title)}</span>
+                                <span style="font-size: 11px; color: #64748b;">${s.date}</span>
+                            </div>
+                            <p style="font-size: 12px; color: #334155; white-space: pre-wrap; margin: 0 0 8px 0; line-height: 1.5;">${escapeHtml(s.content)}</p>
+                            <div style="font-size: 11px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 6px;">
+                                작성자: ${showAuthor ? escapeHtml(s.author) + ' (학생)' : '익명'}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+
+            const opt = {
+                margin:       10,
+                filename:     `신갈중_1-2_건의함_${new Date().toISOString().slice(0,10)}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            showToast('PDF 파일을 생성 중입니다...');
+            html2pdf().set(opt).from(element).save();
+        }
+
+        function render() {
+            const app = document.getElementById('app');
+            const allSuggestions = getSuggestions();
+            
+            // Filter logic
+            let filteredSuggestions = [...allSuggestions];
+            if (state.filterRange === 'month') {
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+                filteredSuggestions = filteredSuggestions.filter(s => new Date(s.timestamp) >= oneMonthAgo);
+            }
+
+            // Automatic Session Check
+            if (state.user && state.view === 'home') {
+                state.view = 'dashboard';
+            }
+
+            // 1. HOME VIEW
+            if (state.view === 'home') {
+                app.className = "flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full";
+                app.innerHTML = `
+                    <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-xl w-full max-w-sm text-center fade-in border border-slate-100 my-auto">
+                        <div class="text-6xl mb-3">🏫</div>
+                        <h1 class="text-2xl font-black text-slate-900 tracking-tight">신갈중학교 1-2반</h1>
+                        <p class="text-xs text-slate-500 font-medium mt-1 mb-5">우리 학급을 위한 소통 건의함</p>
+                        
+                        <div class="inline-block bg-blue-50 text-blue-700 text-xs font-bold px-3.5 py-1.5 rounded-full mb-6 border border-blue-100">
+                            📥 현재 등록된 건의: <span class="font-extrabold">${allSuggestions.length}</span>개
+                        </div>
+
+                        <div class="space-y-3">
+                            <button onclick="navigate('student_login')" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold py-3.5 px-4 rounded-2xl shadow-md transition text-sm flex items-center justify-center gap-2">
+                                <span>👨‍🎓</span> 학생 로그인
+                            </button>
+                            <button onclick="navigate('teacher_login')" class="w-full bg-slate-800 hover:bg-slate-900 active:scale-[0.98] text-white font-bold py-3.5 px-4 rounded-2xl shadow-md transition text-sm flex items-center justify-center gap-2">
+                                <span>👩‍🏫</span> 교사 로그인
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            // 2. LOGIN VIEWS (STUDENT / TEACHER)
+            else if (state.view === 'student_login' || state.view === 'teacher_login') {
+                const isStudent = state.view === 'student_login';
+                const roleKey = isStudent ? 'student' : 'teacher';
+                const titleText = isStudent ? '학생 로그인' : '교사 로그인';
+                const subText = isStudent ? '이름과 비밀번호를 입력해 주세요.' : '선생님 성함과 비밀번호를 입력해 주세요.';
+                const icon = isStudent ? '👨‍🎓' : '👩‍🏫';
+                const nameLabel = isStudent ? '학생 이름' : '교사 이름';
+                const namePlaceholder = isStudent ? '학생 이름 입력 (예: 임재현)' : '교사 이름 입력 (예: 담임선생님)';
+
+                app.className = "flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full";
+                app.innerHTML = `
+                    <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-xl w-full max-w-sm text-center fade-in border border-slate-100 my-auto">
+                        <div class="text-5xl mb-2">${icon}</div>
+                        <h2 class="text-xl font-extrabold text-slate-900 mb-1">${titleText}</h2>
+                        <p class="text-xs text-slate-500 mb-5">${subText}</p>
+                        
+                        ${state.loginError ? `<div class="bg-rose-50 text-rose-600 text-xs py-2 px-3 rounded-lg mb-4 font-semibold border border-rose-200">${state.loginError}</div>` : ''}
+
+                        <form onsubmit="handleLogin('${roleKey}', event)" class="text-left space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">${nameLabel}</label>
+                                <input type="text" id="login-name" required placeholder="${namePlaceholder}" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">비밀번호</label>
+                                <input type="password" id="login-password" required placeholder="비밀번호 입력 (초기: 1234)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50">
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-bold py-3 px-4 rounded-xl shadow transition text-sm">
+                                로그인
+                            </button>
+                        </form>
+
+                        <button onclick="navigate('home')" class="mt-5 text-xs font-semibold text-slate-400 hover:text-slate-600 inline-block transition">
+                            ← 홈으로 돌아가기
+                        </button>
+                    </div>
+                `;
+            }
+            // 3. DASHBOARD VIEW
+            else if (state.view === 'dashboard') {
+                const isTeacher = state.user.role === 'teacher';
+                app.className = "w-full max-w-2xl mx-auto py-6 px-4 fade-in my-0";
+
+                app.innerHTML = `
+                    <!-- Header Banner -->
+                    <div class="bg-blue-600 text-white rounded-2xl p-6 shadow-md mb-6 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-xl sm:text-2xl font-black">${escapeHtml(state.user.name)} ${isTeacher ? '선생님' : '학생'}, 안녕하세요!</h2>
+                            <p class="text-xs text-blue-100 mt-1">신갈중학교 1학년 2반 건의함</p>
+                        </div>
+                        <button onclick="handleLogout()" class="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition backdrop-blur-sm">
+                            로그아웃
+                        </button>
+                    </div>
+
+                    <!-- Navigation Tabs -->
+                    <div class="flex flex-wrap gap-2 mb-6">
+                        <button onclick="state.tab='list'; render();" class="px-4 py-2.5 rounded-xl text-xs font-bold transition ${state.tab === 'list' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}">
+                            📋 건의 목록
+                        </button>
+                        ${isTeacher ? `
+                            <button onclick="state.tab='student_manage'; render();" class="px-4 py-2.5 rounded-xl text-xs font-bold transition ${state.tab === 'student_manage' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}">
+                                👥 학생 비밀번호 관리
+                            </button>
+                        ` : ''}
+                        <button onclick="state.tab='setting'; render();" class="px-4 py-2.5 rounded-xl text-xs font-bold transition ${state.tab === 'setting' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}">
+                            ⚙️ 내 비밀번호 변경
+                        </button>
+                    </div>
+
+                    ${state.tab === 'list' ? `
+                        ${!isTeacher ? `
+                            <!-- Add Suggestion Form for Students -->
+                            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 mb-6">
+                                <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-1.5">
+                                    <span>✍️</span> 새 건의사항 작성하기
+                                </h3>
+                                <form onsubmit="handleAddSuggestion(event)" class="space-y-3">
+                                    <input type="text" id="sug-title" required placeholder="건의 제목을 입력하세요" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50">
+                                    <textarea id="sug-content" required rows="3" placeholder="선생님과 학급 친구들에게 전하고 싶은 건의 내용을 자세히 적어주세요." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50 resize-none"></textarea>
+                                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold py-2.5 px-4 rounded-xl shadow-sm transition text-sm">
+                                        건의 등록하기
+                                    </button>
+                                </form>
+                            </div>
+                        ` : ''}
+
+                        <!-- Filter and Controls Toolbar -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-slate-100 p-2.5 rounded-xl border border-slate-200/60">
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="state.filterRange='all'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${state.filterRange === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+                                    전체 (${allSuggestions.length})
+                                </button>
+                                <button onclick="state.filterRange='month'; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold transition ${state.filterRange === 'month' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+                                    📅 최근 1개월
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                ${isTeacher ? `
+                                    <button onclick="state.teacherForceAnonymous = !state.teacherForceAnonymous; render();" class="px-3 py-1.5 rounded-lg text-xs font-bold border transition ${state.teacherForceAnonymous ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}">
+                                        ${state.teacherForceAnonymous ? '🔒 익명 보기' : '👁️ 실명 보기'}
+                                    </button>
+                                    <button onclick="openResetModal()" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition">
+                                        🗑️ 전체 초기화
+                                    </button>
+                                ` : ''}
+                                <button onclick="downloadPDF()" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition flex items-center gap-1">
+                                    📄 PDF 다운로드
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Suggestions List -->
+                        <div class="space-y-3">
+                            ${filteredSuggestions.length === 0 ? `
+                                <div class="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400 text-sm">
+                                    등록된 건의사항이 없습니다.
+                                </div>
+                            ` : filteredSuggestions.map((s, idx) => `
+                                <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm transition hover:shadow-md">
+                                    <div class="flex items-start justify-between gap-3 mb-2">
+                                        <h4 class="font-bold text-slate-900 text-sm sm:text-base">${escapeHtml(s.title)}</h4>
+                                        <span class="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full whitespace-nowrap">${s.date}</span>
+                                    </div>
+                                    <p class="text-xs sm:text-sm text-slate-600 whitespace-pre-wrap leading-relaxed mb-3">${escapeHtml(s.content)}</p>
+                                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                        <span class="font-medium">
+                                            👤 작성자: <strong class="${isTeacher && !state.teacherForceAnonymous ? 'text-blue-600 font-bold' : 'text-slate-600'}">
+                                                ${isTeacher && !state.teacherForceAnonymous ? `${escapeHtml(s.author)} (학생)` : '익명'}
+                                            </strong>
+                                        </span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : state.tab === 'student_manage' && isTeacher ? `
+                        <!-- Student Password Management Tab for Teacher -->
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <div class="mb-4">
+                                <h3 class="text-base font-bold text-slate-900">👥 1-2반 학생 비밀번호 관리</h3>
+                                <p class="text-xs text-slate-500 mt-1">학생이 비밀번호를 잊어버린 경우, 클릭하여 초기 비밀번호(1234)로 리셋할 수 있습니다.</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
+                                ${Object.entries(getUsers())
+                                    .filter(([_, info]) => info.role === 'student')
+                                    .map(([sName, _]) => `
+                                        <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm">👨‍🎓</span>
+                                                <span class="font-bold text-slate-800 text-sm">${escapeHtml(sName)}</span>
+                                            </div>
+                                            <button onclick="handleResetStudentPw('${escapeHtml(sName)}')" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold rounded-lg text-xs shadow-sm transition">
+                                                🔑 1234로 초기화
+                                            </button>
+                                        </div>
+                                    `).join('')}
+                            </div>
+                        </div>
+                    ` : `
+                        <!-- Change Password Tab Form -->
+                        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <h3 class="text-base font-bold text-slate-900 mb-1">🔐 비밀번호 변경</h3>
+                            <p class="text-xs text-slate-500 mb-5">계정 보안을 위해 비밀번호를 주기적으로 변경해 주세요.</p>
+                            
+                            <form id="pw-form" onsubmit="handleChangePassword(event)" class="space-y-4 max-w-md">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">새 비밀번호</label>
+                                    <input type="password" id="new-pw" required minlength="4" placeholder="4자 이상 입력" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">새 비밀번호 확인</label>
+                                    <input type="password" id="confirm-pw" required minlength="4" placeholder="비밀번호 다시 입력" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-slate-50">
+                                </div>
+                                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold py-3 px-4 rounded-xl shadow-sm transition text-sm">
+                                    비밀번호 변경하기
+                                </button>
+                            </form>
+                        </div>
+                    `}
+                `;
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            render();
+        });
+    </script>
+</body>
+</html>
