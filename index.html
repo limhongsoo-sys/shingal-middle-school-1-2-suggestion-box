@@ -320,7 +320,7 @@
                                 <span>👨‍🎓</span> 학생 로그인
                             </button>
                             <button onclick="navigate('teacher_login')" class="w-full bg-slate-800 hover:bg-slate-900 active:scale-[0.98] text-white font-bold py-3.5 px-4 rounded-2xl shadow-md transition text-sm flex items-center justify-center gap-2">
-                                <span>👩‍🏫</span> 교사 로그인
+                                <span>🧑‍💼</span> 관리자 로그인
                             </button>
                         </div>
                     </div>
@@ -330,11 +330,11 @@
             else if (state.view === 'student_login' || state.view === 'teacher_login') {
                 const isStudent = state.view === 'student_login';
                 const roleKey = isStudent ? 'student' : 'teacher';
-                const titleText = isStudent ? '학생 로그인' : '교사 로그인';
-                const subText = isStudent ? '이름과 비밀번호를 입력해 주세요.' : '선생님 성함과 비밀번호를 입력해 주세요.';
+                const titleText = isStudent ? '학생 로그인' : '관리자 로그인';
+                const subText = isStudent ? '이름과 비밀번호를 입력해 주세요.' : '관리자의 성함과 비밀번호를 입력해 주세요.';
                 const icon = isStudent ? '👨‍🎓' : '👩‍🏫';
-                const nameLabel = isStudent ? '학생 이름' : '교사 이름';
-                const namePlaceholder = isStudent ? '학생 이름 입력' : '교사 이름 입력';
+                const nameLabel = isStudent ? '학생 이름' : '관리자 이름';
+                const namePlaceholder = isStudent ? '학생 이름 입력' : '관리자 이름 입력';
 
                 app.className = "flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full";
                 app.innerHTML = `
