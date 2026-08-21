@@ -54,7 +54,7 @@
             '하유진', '한결', '한소율', '허은성', '노은하'
         ];
 
-        const INITIAL_TEACHERS = ['차승환','admin'];
+        const INITIAL_TEACHERS = ['차승환', 'admin'];
 
         function initStorage() {
             let users = JSON.parse(localStorage.getItem('singal_users')) || {};
@@ -326,15 +326,15 @@
                     </div>
                 `;
             }
-            // 2. LOGIN VIEWS (STUDENT / TEACHER)
+            // 2. LOGIN VIEWS (STUDENT / TEACHER-ADMIN)
             else if (state.view === 'student_login' || state.view === 'teacher_login') {
                 const isStudent = state.view === 'student_login';
                 const roleKey = isStudent ? 'student' : 'teacher';
                 const titleText = isStudent ? '학생 로그인' : '관리자 로그인';
                 const subText = isStudent ? '이름과 비밀번호를 입력해 주세요.' : '관리자의 성함과 비밀번호를 입력해 주세요.';
-                const icon = isStudent ? '👨‍🎓' : '👩‍🏫';
+                const icon = isStudent ? '👨‍🎓' : '🧑‍💼';
                 const nameLabel = isStudent ? '학생 이름' : '관리자 이름';
-                const namePlaceholder = isStudent ? '학생 이름 입력' : '관리자 이름 입력';
+                const namePlaceholder = isStudent ? '학생 이름 입력 (예: 임재현)' : '관리자 이름 입력';
 
                 app.className = "flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full";
                 app.innerHTML = `
@@ -374,7 +374,7 @@
                     <!-- Header Banner -->
                     <div class="bg-blue-600 text-white rounded-2xl p-6 shadow-md mb-6 flex justify-between items-center">
                         <div>
-                            <h2 class="text-xl sm:text-2xl font-black">${escapeHtml(state.user.name)} ${isTeacher ? '선생님' : '학생'}, 안녕하세요!</h2>
+                            <h2 class="text-xl sm:text-2xl font-black">${escapeHtml(state.user.name)}님, 안녕하세요!</h2>
                             <p class="text-xs text-blue-100 mt-1">신갈중학교 1학년 2반 건의함</p>
                         </div>
                         <button onclick="handleLogout()" class="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition backdrop-blur-sm">
