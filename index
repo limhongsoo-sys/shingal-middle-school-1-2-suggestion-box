@@ -54,7 +54,7 @@
             '하유진', '한결', '한소율', '허은성', '노은하'
         ];
 
-        const INITIAL_TEACHERS = ['차승환', '담임선생님'];
+        const INITIAL_TEACHERS = ['차승환'];
 
         function initStorage() {
             let users = JSON.parse(localStorage.getItem('singal_users')) || {};
@@ -334,7 +334,7 @@
                 const subText = isStudent ? '이름과 비밀번호를 입력해 주세요.' : '선생님 성함과 비밀번호를 입력해 주세요.';
                 const icon = isStudent ? '👨‍🎓' : '👩‍🏫';
                 const nameLabel = isStudent ? '학생 이름' : '교사 이름';
-                const namePlaceholder = isStudent ? '학생 이름 입력 (예: 임재현)' : '교사 이름 입력 (예: 담임선생님)';
+                const namePlaceholder = isStudent ? '학생 이름 입력' : '교사 이름 입력';
 
                 app.className = "flex-grow flex flex-col justify-center items-center p-4 sm:p-6 w-full";
                 app.innerHTML = `
